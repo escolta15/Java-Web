@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Interfaz básica de Telecomandas</title>
+</head>
+<body>
+	<h1>Interfaz básica de Telecomandas</h1>
+	
+	<div id="divMesas"></div>
+	<div id="divMesaActual">
+		<label id="lblMesaActual"></label>
+		<button id="btnConfirmar" onclick="confirmarComanda()">Confirmar comanda</button>
+		<button id="btnBorrar" onclick="borrarPlatos()">Eliminar platos</button><br>
+		<div id="divComandaTemporal"></div><!-- aqui se van a ir añadiendo los platos que se van pidiendo para la comanda -->
+		<div id="divComanda"></div>
+	</div>
+	<table id="tableBotones"></table>
+	<div id="divErrores"></div>
+</body>
+<script>
+	var mesaActual=null;
+	iniciar();
+	
+	function iniciar() {
+		tableBotones.innerHTML="";
+		getMesas();
+		getCategorias();
+	}
+	
+	function getMesas() {
+		divMesas.innerHTML="";
+		var request=new XMLHttpRequest();
+		request.open("get", "getMesas.jsp");//1
+		request.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+		request.onreadystatechange = function() {
+			if (request.readyState==4 && request.status==200) {
+				var respuesta=JSON.parse(request.responseText);
+				var tabla=document.createElement("table"); divMesas.appendChild(tabla);
+				tabla.border="1";
+				var tr=document.createElement("tr"); tabla.appendChild(tr);
+				for (var i=0; i<respuesta.length; i++) {
+					var mesa=respuesta[i];
+					var td=document.createElement("td"); tr.appendChild(td);
+					var label=document.createElement("label"); td.appendChild(label); td.appendChild(document.createElement("br"));
+					label.innerHTML="Mesa " + mesa._id;
+					var btnCambiarEstado=document.createElement("button"); td.appendChild(btnCambiarEstado); td.appendChild(document.createElement("br"));
+					if (mesa.estado=="Libre") 
+						btnCambiarEstado.innerHTML="Abrir";
+					else {
+						btnCambiarEstado.innerHTML="Cerrar";
+						var btnSeleccionarMesa=document.createElement("button"); td.appendChild(btnSeleccionarMesa); td.appendChild(document.createElement("br"));
+						btnSeleccionarMesa.innerHTML="Seleccionar";
+						btnSeleccionarMesa.setAttribute("onclick", "seleccionar(" + mesa._id + ")");
+					}
+					btnCambiarEstado.setAttribute("onclick", "cambiarEstado(" + mesa._id + ", '" + mesa.estado + "')");
+					//si la mesa esta libre, entonces mesa.estado en cambiarEstado sera "Libre"
+				}
+				showMesaActual();//1.3
+			}
+		};	
+		request.send();
+	}
+	
+	function seleccionar(idMesa) {
+		var request=new XMLHttpRequest();
+		request.open("post", "getEstadoMesa.jsp", false);//2-el false es para que sea síncrono
+		request.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+		request.onreadystatechange = function() {
+			if (request.readyState==4 && request.status==200) {
+				var respuesta=JSON.parse(request.responseText);
+				mesaActual=new Mesa(idMesa);
+				showMesaActual();
+				if (respuesta.comanda!=undefined) {
+					var comanda=respuesta.comanda;
+					var horaApertura = comanda.horaApertura;
+					var platos=comanda.platos;
+					divComanda.innerHTML="";
+					for (var i=0; i<platos.length; i++) {
+						var plato=platos[i];
+						var span=document.createElement("span");
+						span.innerHTML=plato.unidades + " ... " + plato.nombre + " ... " + plato.precio + "€";
+						divComanda.appendChild(span); divComanda.appendChild(document.createElement("br"));
+					}
+				} else 
+					divComanda.innerHTML="La comanda está vacía";
+			}
+		};	
+		var p = {
+			_id : idMesa
+		};
+		request.send("p=" + JSON.stringify(p));
+	}
+	
+	function cambiarEstado(idMesa, estado) {
+		var request=new XMLHttpRequest();
+		if (estado=="Libre")
+			request.open("post", "abrirMesa.jsp");//3
+		else
+			request.open("post", "cerrarMesa.jsp");//4
+		request.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+		request.onreadystatechange = function() {
+			if (request.readyState==4 && request.status==200) {
+				var respuesta=JSON.parse(request.responseText);
+				if (respuesta.resultado=="OK") {
+					getMesas();//1
+					if (estado=="Libre")
+						mesaActual=new Mesa(idMesa);//se abre la mesa, por tanto se crea una nueva
+						//mesaActual pasa a ser la que se ha abierto
+					else
+						mesaActual=null;
+						//la mesaActual no es ninguna.
+					showMesaActual();//1.3
+				} else
+					divErrores.innerHTML=respuesta.mensaje;
+			}
+		};	
+		var p = {
+			_id : idMesa
+		};
+		request.send("p=" + JSON.stringify(p));
+	}
+	
+	function showMesaActual() {
+		lblMesaActual.innerHTML="Mesa seleccionada: ninguna";
+		if (mesaActual!=null) {
+			lblMesaActual.innerHTML="Mesa seleccionada: " + mesaActual.id;
+			divComandaTemporal.innerHTML="";
+			for (var i=0; i<mesaActual.platos.length; i++) {
+				var btn=document.createElement("button");
+				divComandaTemporal.appendChild(btn);
+				btn.innerHTML=mesaActual.platos[i].nombre+" / Unidades: "+mesaActual.platos[i].unidades;
+			}
+		}
+	}
+	
+	function getCategorias() {
+		divMesas.innerHTML="";
+		var request=new XMLHttpRequest();
+		request.open("get", "getCategorias.jsp");//5
+		request.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+		request.onreadystatechange = function() {
+			if (request.readyState==4 && request.status==200) {
+				var respuesta=JSON.parse(request.responseText);
+				var tr=document.createElement("tr"); tableBotones.appendChild(tr);
+				for (var i=0; i<respuesta.length; i++) {
+					var categoria=respuesta[i];
+					var td=document.createElement("td"); tr.appendChild(td);
+					var btn=document.createElement("button"); td.appendChild(btn); td.appendChild(document.createElement("br"));
+					btn.innerHTML=categoria.nombre;
+					btn.setAttribute("onclick", "getPlatosDeCategoria('" + categoria._id + "')");
+					btn.setAttribute("style", "background-color: RED");
+				}
+			}
+		};	
+		request.send();
+	}
+	
+	function getPlatosDeCategoria(idCategoria) {
+		var request=new XMLHttpRequest();
+		request.open("post", "getPlatosDeCategoria.jsp");//6
+		request.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+		request.onreadystatechange = function() {
+			if (request.readyState==4 && request.status==200) {
+				var respuesta=JSON.parse(request.responseText);//devuelve los platos de cada categoria
+				var platos=respuesta;
+				tableBotones.innerHTML="";
+				var btn=document.createElement("button"); tableBotones.appendChild(btn);
+				btn.setAttribute("onclick", "iniciar()");//si se pulsa el boton de ir atrás, se inica todo, es como si se refrescara la pagina
+				btn.innerHTML="Atrás";
+				for (var i=0; i<platos.length; i++) {
+					btn=document.createElement("button"); tableBotones.appendChild(btn);
+					btn.innerHTML=platos[i].nombre + " ... " + platos[i].precio;
+					btn.setAttribute("onclick", "elegirPlato('" + idCategoria + "', " +
+							"'" + platos[i]._id + "', '" + platos[i].nombre + "')");
+					btn.setAttribute("style", "background-color: ORANGE");
+				}
+				mostrarComanda(respuesta);
+			}
+		};	
+		var p = {
+			idCategoria : idCategoria
+		};
+		request.send("p=" + JSON.stringify(p));
+	}
+	
+	function elegirPlato(idCategoria, idPlato, nombre) {
+		if (mesaActual==null) {
+			alert("Elige una mesa");
+			return;
+		}
+		mesaActual.addPlato(idCategoria, idPlato, nombre);
+		showMesaActual();
+	}
+	
+	function Mesa(id) {//Crea la clase Mesa
+		this.id=id;
+		this.platos=[];//this.platos=new Array;
+		//aqui vamos añadiendo los platos de esa mesa
+	}
+	
+	Mesa.prototype.addPlato = function(idCategoria, idPlato, nombre) {//add los metodos de esa clase
+		var plato=null;
+		for (var i=0; i<this.platos.length; i++) {
+			var auxi=this.platos[i];
+			//vamos a comprobar que si se pide el mismo plato, se aumenten las unidades
+			if (auxi.idCategoria==idCategoria && auxi.idPlato==idPlato) {
+				plato=auxi;
+				break;
+			}
+		}
+		if (plato==null) {//se hace si el plato no se ha pedido antes
+			plato=new Plato(idCategoria, idPlato, nombre);
+			this.platos.push(plato);
+		}
+		plato.unidades=plato.unidades+1;//se hace siempre para que cuando se crea el plato, se añada la primera vez 
+	}
+	
+	function Plato(idCategoria, idPlato, nombre) {
+		this.idCategoria=idCategoria;
+		this.idPlato=idPlato;
+		this.nombre=nombre;
+		this.unidades=0;
+	}
+	
+	function confirmarComanda(){
+		var request=new XMLHttpRequest();
+		request.open("post", "recibirComanda.jsp");//7-es post porque vamos a enviar datos
+		request.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+		request.onreadystatechange = function() {
+			/*if (request.readyState==4){esto es igual que esto if (request.readyState==4 && request.status==200) {
+				if (request.status==200)
+					alert("Todo bien");
+				else if (request.status==404)
+					alert("Error 404");
+			}*/
+			if (request.readyState==4 && request.status==200) {
+				console.log(request.responseText);//con esto aparece un mensaje por consola del navegador
+				var respuesta=JSON.parse(request.responseText);
+				if(respuesta.resultado = "OK"){
+					/*divComanda.innerHTML="Comanda Comfirmada: ";
+					for (var i=0; i<mesaActual.platos.length; i++){
+						divComanda.innerHTML+=mesaActual.platos[i].nombre+" / Unidades: "+mesaActual.platos[i].unidades + " - ";
+					}*/
+					mostrarComanda(respuesta);
+					mesaActual.platos=[];
+					showMesaActual();
+				}else{
+					alert(respuesta.mensaje);
+				}
+			}
+		};
+		var p=JSON.stringify(mesaActual);
+		request.send("p=" + p);
+	}
+	
+	function mostrarComanda(respuesta) {
+		if (respuesta.comanda!=undefined) {
+			var comanda=respuesta.comanda;
+			var horaApertura = comanda.horaApertura;
+			var platos=comanda.platopedido;
+			var precioFinal=0.0;
+			divComanda.innerHTML="";
+			for (var i=0; i<platos.length; i++) {
+				var plato=platos[i];
+				var span=document.createElement("span");
+				span.innerHTML=plato.unidades + " ... " + plato.nombre + " ... " + plato.precio + "€";
+				precioFinal+=plato.unidades*plato.precio;
+				divComanda.appendChild(span); divComanda.appendChild(document.createElement("br"));
+			}
+			divComanda.innerHTML=precioFinal + "€";
+		} else 
+			divComanda.innerHTML="La comanda está vacía";
+	}
+		
+	function borrarPlatos(){
+		while(mesaActual.platos.length != 0){
+			mesaActual.platos.pop();
+		}
+		showMesaActual();
+	}
+		
+		
+</script>
+</html>
